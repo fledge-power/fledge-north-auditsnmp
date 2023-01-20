@@ -1,0 +1,18 @@
+[
+  {
+    "name": "START",
+    "oidValue": "1.3.6.1.2.1.1.1"
+  },
+  {
+    "name": "FSTOP",
+    "oidValue": "1.3.6.1.2.1.1.2"
+  },
+  {
+    "name": "SRVUN",
+    "oidValue": "1.3.6.1.2.1.1.3"
+  },
+  {
+    "name": "SRVRG",
+    "oidValue": "1.3.6.1.2.1.1.4"
+  }
+]
