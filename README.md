@@ -2,8 +2,11 @@
 A Fledge north plugin that sends audit events data as SNMP traps
 
 Quick installation :
+
 -Download the plugin
+
 -Copy your file in the North plugin folder of Fledge
+
 -Create or copy a MIB in JSON
 -Put this file in the plugin repository
 -The plugin should be seen in Fledge-GUI
