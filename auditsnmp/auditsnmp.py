@@ -126,7 +126,7 @@ def plugin_info():
     """
     return {
         'name': 'auditsnmp',
-        'version': '1.0.0',
+        'version': '1.0.1',
         'type': 'north',
         'interface': '1.0',
         'config': _DEFAULT_CONFIG
@@ -146,7 +146,8 @@ def plugin_init(data):
 
     
     current_directory = os.path.dirname(__file__) #open the auditSNMP.json in the current folder
-    with open(current_directory+'/auditSNMP.json','r')as f:
+    _LOGGER.info("Loading "+current_directory+'/mib/auditSNMP.JSON')
+    with open(current_directory+'/mib/auditSNMP.JSON','r')as f:
         MIB_dict=json.load(f)
 
     return config

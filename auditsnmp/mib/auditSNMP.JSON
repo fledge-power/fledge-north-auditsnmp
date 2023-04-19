@@ -1,0 +1,30 @@
+[
+  {
+    "name": "START",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "FSTOP",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "CONCH",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "CONAD",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "SRVRG",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "SRVUN",
+    "oidValue": "replace_by_your_oid"
+  },
+  {
+    "name": "SRVFL",
+    "oidValue": "replace_by_your_oid"
+  }
+]
