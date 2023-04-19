@@ -9,24 +9,24 @@
 import asyncio
 import json
 import os
-import logging
+from itertools import chain
+from attr import s
+
 from fledge.common import logger
+from fledge.plugins.common import utils
 
 __author__ = "Jeannin David"
 __copyright__ = "Copyright (c) 2022, RTE (https://www.rte-france.com)"
 __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
-_LOGGER = logger.setup(__name__, level=logging.INFO)
-
-
-#initialisation of variable used for the startup of the plugin
 SNMPnorthaudit = None
-debug_Tools=None
 MIB_dict=None
 config = ""
+_LOGGER = logger.setup(__name__, level=logger.logging.INFO)
 
-#Fledge Gui interface
+
+
 _DEFAULT_CONFIG = {
     'plugin': {
          'description': 'SNMP audit Plugin',
@@ -37,12 +37,12 @@ _DEFAULT_CONFIG = {
     'destination': {
         'description': 'Destination Manager that will receive the traps',
         'type': 'string',
-        'default': 'localhost:161',
+        'default': '127.0.0.1:162',
         'order': '1',
         'displayName': 'Manager address:port'
     },
     "source": {
-         "description": "Source of data to be sent on the stream. Currently there is only audit.",
+         "description": "Source of data to be sent on the stream. May be either readings or statistics.",
          "type": "enumeration",
          "default": "audit",
          "options": ["audit"],
@@ -58,7 +58,7 @@ _DEFAULT_CONFIG = {
         'displayName': 'SNMP Version'
     },
     'EngID': {
-        'description': 'Engine ID if using SNMPv3. Exemple : 0x090807060504030201',
+        'description': 'Engine ID if using SNMPv3.',
         "type": "string",
         "default": "",
         'order': '3',
@@ -92,9 +92,9 @@ _DEFAULT_CONFIG = {
         "validity": "snmpVersion == \"v3\"" and "Security!=\"noAuthNoPriv\""
     },
     'pwd': {
-        'description': 'Password if using SNMPv3. Must be at least 8 characters long',
+        'description': 'Password if using SNMPv3.',
         "type": "string",
-        "default": "defaultPassword",
+        "default": "default",
         'order': '5',
         'displayName': 'Password (SNMPv3)',
         "validity": "snmpVersion == \"v3\"" and "Security!=\"noAuthNoPriv\""
@@ -109,15 +109,14 @@ _DEFAULT_CONFIG = {
         "validity": "snmpVersion == \"v3\"" and "Security==\"authPriv\""
     },
     'EncPwd': {
-        'description': 'Password for encryption if using SNMPv3. Must be at least 8 characters long',
+        'description': 'Password for encryption if using SNMPv3.',
         "type": "string",
-        "default": "defaultPassword",
+        "default": "default",
         'order': '6',
         'displayName': 'PrivPassword (SNMPv3)',
         "validity": "snmpVersion == \"v3\"" and "Security==\"authPriv\""
-    }
+    },
 }
-
 
 def plugin_info():
     """ Used only once when call will be made to a plugin.
@@ -127,7 +126,7 @@ def plugin_info():
     """
     return {
         'name': 'auditsnmp',
-        'version': '2.0.1',
+        'version': '1.0.0',
         'type': 'north',
         'interface': '1.0',
         'config': _DEFAULT_CONFIG
@@ -144,8 +143,10 @@ def plugin_init(data):
     global SNMPnorthaudit, config,MIB_dict
     SNMPnorthaudit = SNMPnorthaudit()
     config = data
-    #load the oid db
-    with open('/usr/local/fledge/python/fledge/plugins/north/auditsnmp/MIB.json','r')as f:
+
+    
+    current_directory = os.path.dirname(__file__) #open the auditSNMP.json in the current folder
+    with open(current_directory+'/auditSNMP.json','r')as f:
         MIB_dict=json.load(f)
 
     return config
@@ -179,7 +180,6 @@ def plugin_shutdown(handle):
     """
     _LOGGER.info('snmp plugin shut down.')
 
-
 class SNMPnorthaudit():
     """ North SNMP audit Plugin """
 
@@ -192,66 +192,56 @@ class SNMPnorthaudit():
                 break
         return(oid)
 
-    def sending_trap(self,snmp_server,asset,value): #send trap using snmptrap
+    def sending_trap(self,snmp_server,asset,value):
         oid = self.json_oid(MIB_dict,asset)
         if oid!=None:
             if config["snmpVersion"]["value"]=="v2c":
-                try :
-                    os.system("snmptrap -v2c -c public {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(snmp_server, oid, 's', value))
-                    _LOGGER.debug("snmptrap -v2c -c public {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(snmp_server, oid, 's', value))
-                except OSError as ex :
-                    _LOGGER.error(ex)
+                os.system("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
+                _LOGGER.info("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
             else :
                 if config["Security"]["value"] == "noAuthNoPriv":
-                    try :
-                        os.system("snmptrap -v 3 -e {} -u {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.debug("snmptrap -v 3 -e {} -u {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    except OSError as ex :
-                        _LOGGER.error(ex)
-                elif config["Security"]["value"] == "AuthNoPriv":
-                    try :
-                        os.system("snmptrap -v 3 -e {} -u {} -a {} -A {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.debug("snmptrap -v 3 -e {} -u {} -a {} -A {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    except OSError as ex :
-                        _LOGGER.error(ex)
+                    os.system("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    _LOGGER.info("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                elif config["Security"]["value"] == "authNoPriv":
+                    os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
                 else:
-                    try :
-                        os.system("snmptrap -v 3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.debug("snmptrap -v 3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} 1.3.6.1.6.3.1.1.4.1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid,'s', value))
-                    except OSError as ex :
-                        _LOGGER.error(ex)
+                    os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
         else :
-            _LOGGER.debug("Missing oid for : {}".format(asset))
+            _LOGGER.info("Missing oid for : {}".format(asset))
 
             
     async def send_payloads(self, payloads):
         is_data_sent = False
         last_object_id = 0
         num_sent = 0
-        try:
+
+        #_LOGGER.info('processing payloads')
+        try: #writing of a new list
             payload_block=list()
             for p in payloads:
                 last_object_id=p["id"]
                 read=dict()
                 read["asset"] = p['asset_code']
-                read["content"]=p['reading']
                 read["timestamp"]=p['user_ts']
+                read["content"]=p['reading']
                 read["oid"]=self.json_oid(MIB_dict,read['asset'])
+                value="{'ts': '" + str(read["timestamp"]) + "'}" + str(read["content"])#setting of the string to be send with the trap
                 payload_block.append(read)
-                self.sending_trap(config["destination"]["value"],read["asset"],read["content"])
+                self.sending_trap(config["destination"]["value"],read["asset"],value)
             num_sent=await self._send_payloads(payload_block)
             is_data_sent=True
 
-        except Exception as ex:
+        except Exception as ex: #exception handle
             _LOGGER.exception("Error, %s",str(ex))
 
         return is_data_sent, last_object_id, num_sent
 
-    async def _send_payloads(self, payloads_block):
+    async def _send_payloads(self, payloads_block): #incrementation of the Fledge "Sent" Counter
         num_count=0
         num_count += len(payloads_block)
         return num_count
-
 
 
 
