@@ -126,7 +126,7 @@ def plugin_info():
     """
     return {
         'name': 'auditsnmp',
-        'version': '1.0.1',
+        'version': '1.0.2',
         'type': 'north',
         'interface': '1.0',
         'config': _DEFAULT_CONFIG
@@ -146,10 +146,14 @@ def plugin_init(data):
 
     
     current_directory = os.path.dirname(__file__) #open the auditSNMP.json in the current folder
-    _LOGGER.info("Loading "+current_directory+'/mib/auditSNMP.JSON')
-    with open(current_directory+'/mib/auditSNMP.JSON','r')as f:
-        MIB_dict=json.load(f)
-
+    load_path = current_directory+"/mib/auditSNMP.JSON"
+    _LOGGER.info("Loading" + load_path)
+    try :
+        with open(load_path,'r')as f:
+            MIB_dict=json.load(f)
+            _LOGGER.info("Success loading the MIB File")
+    except :
+        _LOGGER.error("Error loading the MIB File")
     return config
 
 async def plugin_send(handle, payload, stream_id):
@@ -196,19 +200,22 @@ class SNMPnorthaudit():
     def sending_trap(self,snmp_server,asset,value):
         oid = self.json_oid(MIB_dict,asset)
         if oid!=None:
-            if config["snmpVersion"]["value"]=="v2c":
-                os.system("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
-                _LOGGER.info("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
-            else :
-                if config["Security"]["value"] == "noAuthNoPriv":
-                    os.system("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    _LOGGER.info("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                elif config["Security"]["value"] == "authNoPriv":
-                    os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                else:
-                    os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+            try :
+                if config["snmpVersion"]["value"]=="v2c":
+                    os.system("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
+                    _LOGGER.info("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
+                else :
+                    if config["Security"]["value"] == "noAuthNoPriv":
+                        os.system("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                        _LOGGER.info("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    elif config["Security"]["value"] == "authNoPriv":
+                        os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                        _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    else:
+                        os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                        _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+            except :
+                _LOGGER.error("Error sending trap")
         else :
             _LOGGER.info("Missing oid for : {}".format(asset))
 
@@ -218,7 +225,7 @@ class SNMPnorthaudit():
         last_object_id = 0
         num_sent = 0
 
-        #_LOGGER.info('processing payloads')
+        _LOGGER.debug('processing payloads')
         try: #writing of a new list
             payload_block=list()
             for p in payloads:
