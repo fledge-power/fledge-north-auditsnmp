@@ -14,7 +14,6 @@ env:
   REGISTRY_USER: ${{ github.actor }}
   REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
   FLEDGE_IMAGE_NAME: 'fledgepower/fledge-104-snmp'
-  FLEDGE_GUI_IMAGE_NAME: 'fledgepower/fledge-gui'
   IMAGE_TAG: 'latest'
 
 jobs:
