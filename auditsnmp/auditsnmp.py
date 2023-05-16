@@ -9,21 +9,16 @@
 import asyncio
 import json
 import os
-from itertools import chain
-from attr import s
-
+import logging
+from copy import deepcopy
 from fledge.common import logger
-from fledge.plugins.common import utils
 
 __author__ = "Jeannin David"
 __copyright__ = "Copyright (c) 2022, RTE (https://www.rte-france.com)"
 __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
-SNMPnorthaudit = None
-MIB_dict=None
-config = ""
-_LOGGER = logger.setup(__name__, level=logger.logging.INFO)
+_LOGGER = logger.setup(__name__, level=logging.INFO)
 
 
 
@@ -89,7 +84,7 @@ _DEFAULT_CONFIG = {
         "options": ["SHA","MD5"],
         'order': '6',
         'displayName': 'Authentification type (SNMPv3)',
-        "validity": "snmpVersion == \"v3\"" and "Security!=\"noAuthNoPriv\""
+        "validity": "snmpVersion == \"v3\" && Security!=\"noAuthNoPriv\""
     },
     'pwd': {
         'description': 'Password if using SNMPv3.',
@@ -97,7 +92,7 @@ _DEFAULT_CONFIG = {
         "default": "default",
         'order': '5',
         'displayName': 'Password (SNMPv3)',
-        "validity": "snmpVersion == \"v3\"" and "Security!=\"noAuthNoPriv\""
+        "validity": "snmpVersion == \"v3\" && Security!=\"noAuthNoPriv\""
     },
     'EncType': {
         'description': 'Encryption type if using SNMPv3.',
@@ -106,7 +101,7 @@ _DEFAULT_CONFIG = {
         "options": ["AES","DES"],
         'order': '6',
         'displayName': 'Encryption type (SNMPv3)',
-        "validity": "snmpVersion == \"v3\"" and "Security==\"authPriv\""
+        "validity": "snmpVersion == \"v3\" && Security==\"authPriv\""
     },
     'EncPwd': {
         'description': 'Password for encryption if using SNMPv3.',
@@ -114,7 +109,7 @@ _DEFAULT_CONFIG = {
         "default": "default",
         'order': '6',
         'displayName': 'PrivPassword (SNMPv3)',
-        "validity": "snmpVersion == \"v3\"" and "Security==\"authPriv\""
+        "validity": "snmpVersion == \"v3\" && Security==\"authPriv\""
     },
 }
 
@@ -126,25 +121,15 @@ def plugin_info():
     """
     return {
         'name': 'auditsnmp',
-        'version': '1.0.2',
+        'version': '1.1.4',
         'type': 'north',
         'interface': '1.0',
         'config': _DEFAULT_CONFIG
     }
 
-
-def plugin_init(data):
-    """ Used for initialization of a plugin.
-    Args:
-        data - Plugin configuration
-    Returns:
-        Dictionary of a Plugin configuration
-    """
-    global SNMPnorthaudit, config,MIB_dict
-    SNMPnorthaudit = SNMPnorthaudit()
-    config = data
-
-    
+def loadMIB():
+    global MIB_dict
+    MIB_dict=None
     current_directory = os.path.dirname(__file__) #open the auditSNMP.json in the current folder
     load_path = current_directory+"/mib/auditSNMP.JSON"
     _LOGGER.info("Loading" + load_path)
@@ -152,70 +137,74 @@ def plugin_init(data):
         with open(load_path,'r')as f:
             MIB_dict=json.load(f)
             _LOGGER.info("Success loading the MIB File")
+    except Exception as ex: #exception handle
+        _LOGGER.exception("Error loading the MIB File : %s",str(ex))
     except :
-        _LOGGER.error("Error loading the MIB File")
-    return config
+        _LOGGER.error("Unknown Error loading the MIB File")
+
+
+def plugin_init(data):
+
+    loadMIB()
+    config_data = deepcopy(data)
+    config_data['audit_snmp'] = SNMPnorthaudit(config=config_data)
+    return config_data
 
 async def plugin_send(handle, payload, stream_id):
-    """ Used to send the readings block from north to the configured destination.
-    Args:
-        handle - An object which is returned by plugin_init
-        payload - A List of readings block
-        stream_id - An Integer that uniquely identifies the connection from Fledge instance to the destination system
-    Returns:
-        Tuple which consists of
-        - A Boolean that indicates if any data has been sent
-        - The object id of the last reading which has been sent
-        - Total number of readings which has been sent to the configured destination
-    """
-    
+
     try:
-        is_data_sent, new_last_object_id, num_sent = await SNMPnorthaudit.send_payloads(payload)
+        audit_snmp = handle['audit_snmp'] 
+        is_data_sent, new_last_object_id, num_sent = await audit_snmp.send_payloads(payload)
     except asyncio.CancelledError:
         pass
     else:
         return is_data_sent, new_last_object_id, num_sent
 
+def plugin_reconfigure():
+    pass
 
 def plugin_shutdown(handle):
-    """ Used when plugin is no longer required and will be final call to shutdown the plugin. It should do any necessary cleanup if required.
-    Args:
-         handle - Plugin handle which is returned by plugin_init
-    Returns:
-    """
     _LOGGER.info('snmp plugin shut down.')
 
-class SNMPnorthaudit():
+
+
+
+
+class SNMPnorthaudit(object):
     """ North SNMP audit Plugin """
+
+    def __init__(self, config):
+        self.event_loop = asyncio.get_event_loop()
+        self.config = config
 
         
     def json_oid(self,data,researched_name): #Search for a name in the JSON db and return it's OID
+        oid=None
         for i in data:
-            oid=None
             if i['name']==researched_name:
                 oid=i['oidValue']
                 break
         return(oid)
 
+
+
     def sending_trap(self,snmp_server,asset,value):
         oid = self.json_oid(MIB_dict,asset)
         if oid!=None:
             try :
-                if config["snmpVersion"]["value"]=="v2c":
-                    os.system("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
-                    _LOGGER.info("snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value))
+                if self.config["snmpVersion"]["value"]=="v2c":
+                    data_string = "snmptrap -v2c -c public {} '' {} .1 {} \"{}\"".format(snmp_server, oid, 's', value)
                 else :
-                    if config["Security"]["value"] == "noAuthNoPriv":
-                        os.system("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.info("snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                    elif config["Security"]["value"] == "authNoPriv":
-                        os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"],config["pwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                    if self.config["Security"]["value"] == "noAuthNoPriv":
+                        data_string = "snmptrap -v3 -e {} -u {} -l {} {} '' {} .1 {} \"{}\"".format(self.config["EngID"]["value"],self.config["User"]["value"],self.config["Security"]["value"],snmp_server,oid, 's', value)
+                    elif self.config["Security"]["value"] == "authNoPriv":
+                        data_string = "snmptrap -v3 -e {} -u {} -a {} -A {} -l {} {} '' {} .1 {} \"{}\"".format(self.config["EngID"]["value"],self.config["User"]["value"],self.config["AuthType"]["value"],self.config["pwd"]["value"],self.config["Security"]["value"],snmp_server,oid, 's', value)
                     else:
-                        os.system("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
-                        _LOGGER.info("snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(config["EngID"]["value"],config["User"]["value"],config["AuthType"]["value"], config["pwd"]["value"],config["EncType"]["value"],config["EncPwd"]["value"],config["Security"]["value"],snmp_server,oid, 's', value))
+                        data_string = "snmptrap -v3 -e {} -u {} -a {} -A {} -x {} -X {} -l {} {} '' {} .1 {} \"{}\"".format(self.config["EngID"]["value"],self.config["User"]["value"],self.config["AuthType"]["value"], self.config["pwd"]["value"],self.config["EncType"]["value"],self.config["EncPwd"]["value"],self.config["Security"]["value"],snmp_server,oid, 's', value)
+                os.system(data_string)
+                _LOGGER.info(data_string)
             except :
-                _LOGGER.error("Error sending trap")
+                    _LOGGER.error("Error sending trap")
         else :
             _LOGGER.info("Missing oid for : {}".format(asset))
 
@@ -225,6 +214,7 @@ class SNMPnorthaudit():
         last_object_id = 0
         num_sent = 0
 
+        
         _LOGGER.debug('processing payloads')
         try: #writing of a new list
             payload_block=list()
@@ -234,10 +224,11 @@ class SNMPnorthaudit():
                 read["asset"] = p['asset_code']
                 read["timestamp"]=p['user_ts']
                 read["content"]=p['reading']
-                read["oid"]=self.json_oid(MIB_dict,read['asset'])
-                value="{'ts': '" + str(read["timestamp"]) + "'}" + str(read["content"])#setting of the string to be send with the trap
+                if MIB_dict != None :
+                    read["oid"]=self.json_oid(MIB_dict,read['asset'])
+                    value="{'ts': '" + str(read["timestamp"]) + "'}" + str(read["content"])#setting of the string to be send with the trap
+                    self.sending_trap(self.config["destination"]["value"],read["asset"],value)
                 payload_block.append(read)
-                self.sending_trap(config["destination"]["value"],read["asset"],value)
             num_sent=await self._send_payloads(payload_block)
             is_data_sent=True
 
