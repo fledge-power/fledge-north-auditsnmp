@@ -2,7 +2,7 @@
 A Fledge north plugin that sends SNMP traps from audits events
 
 # Configuration
-## Gloabal
+## Global
 ### Manager (address:port)
 The destination to which traps should be sent  
 
