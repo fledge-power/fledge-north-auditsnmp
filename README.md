@@ -1,33 +1,47 @@
 # fledge-north-auditsnmp
-A Fledge north plugin that sends audit events data as SNMP traps
+A Fledge north plugin that sends SNMP traps from audits events
 
+# Configuration
+## Gloabal
+### Manager (address:port)
+The destination to which traps should be sent  
 
-Quick installation :
+### (optional) Secondary Manager (address:port)
+Secondary destination, in backup from the previous one. Thie field can be empty if none.
 
--Download the plugin
+### Source
+Source of the data. Only audits are handled.
 
--Copy your file in the North plugin folder of Fledge
+### OID bindings
+JSON containing bindings between the Fledge audit name and OID.
 
--Create or copy a MIB in JSON
+### SNMP Version
+SNMP version that will be used by the plugin. Can be v2c or v3.
 
--Put this file in the plugin repository
+### Engine ID
+**V3**
+The Engine ID used by the plugin
 
--The plugin should be seen in Fledge-GUI
+### Security
+**V3**
+The security level used by the plugin. Can be noAuthNoPriv,authNoPriv and authPriv.
 
+### User name
+**V3**
+The name of the SNMP user that will be used by the plugin.
 
+### Authentification type
+**V3-auth**
+Authentication method used by the plugin. Can be SHA or MD5.
 
-Integration in Fledge-GUI :
+### Password
+**V3-auth**
+Password used by the plugin.
 
--open Fledge-GUI in your browser
+### Encryption type
+**V3-authPriv**
+Encryption method used by the plugin. Can be AES or DES.
 
--Click on "North" in the left menu
-
--Click on Add +
-
--Select auditsnmp and name your service
-
--IMPORTANT:Check "Add as a Service"
-
--Next, configure the plugin as your conveniance
-
--You have a working auditsnmp plugin
+### PrivPassword
+**V3-authPriv**
+Cypher Key used for the Encryption.
